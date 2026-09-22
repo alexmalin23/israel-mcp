@@ -100,7 +100,7 @@ docs/
 
 ## Status
 
-v0.1 — unit and protocol tests pass; outbound API calls should be verified against the live services (see each service doc's "Verification" section) before production use.
+v0.1 — unit and protocol tests pass. data.gov.il, Bank of Israel and all Hebcal tools are verified against the live APIs. Green Invoice is not yet verified live; check it against the sandbox (see [its Verification section](docs/services/green-invoice.md)) before production use.
 
 ## Disclaimer
 

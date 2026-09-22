@@ -21,6 +21,15 @@ async function ckan<T>(action: string, params: Record<string, string | number | 
   return res.result;
 }
 
+/** Drop CKAN's internal row id ("_id") from both the field list and the records. */
+export function shapeDatastore(r: { total: number; fields: { id: string; type: string }[]; records: Record<string, unknown>[] }) {
+  return {
+    total: r.total,
+    fields: r.fields.filter((f) => f.id !== "_id").map((f) => ({ name: f.id, type: f.type })),
+    records: r.records.map(({ _id, ...rest }) => rest),
+  };
+}
+
 export const govData: ServiceModule = {
   id: "gov",
   name: "data.gov.il",
@@ -91,7 +100,7 @@ export const govData: ServiceModule = {
       },
       async ({ resourceId, query, filters, limit, offset }) =>
         run(async () => {
-          const r = await ckan<{ total: number; fields: any[]; records: any[] }>(
+          const r = await ckan<Parameters<typeof shapeDatastore>[0]>(
             "datastore_search",
             {
               resource_id: resourceId,
@@ -102,11 +111,7 @@ export const govData: ServiceModule = {
             },
             t,
           );
-          return ok({
-            total: r.total,
-            fields: r.fields.filter((f) => f.id !== "_id").map((f) => ({ name: f.id, type: f.type })),
-            records: r.records,
-          });
+          return ok(shapeDatastore(r));
         }),
     );
   },

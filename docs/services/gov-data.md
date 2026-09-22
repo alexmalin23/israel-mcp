@@ -29,7 +29,7 @@ Reads rows from a resource (`datastore_search`). Only resources with `queryable:
 | `limit` | int 1–500 | 20 | |
 | `offset` | int | 0 | |
 
-Returns `total`, `fields[]` (`name`, `type`) and `records[]`.
+Returns `total`, `fields[]` (`name`, `type`) and `records[]`. CKAN's internal `_id` is stripped from both; with `query`, CKAN adds a `rank` (relevance) field.
 
 ## Typical flow
 1. `gov_search_datasets { query: "רכב" }`
