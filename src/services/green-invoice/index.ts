@@ -1,7 +1,17 @@
 import { z } from "zod";
 import type { ServiceModule } from "../types.js";
 import { ok, run } from "../../lib/result.js";
-import { GreenInvoiceClient } from "./client.js";
+import { getGreenInvoiceClient, WriteOutcomeUnknownError } from "./client.js";
+import {
+  audit,
+  checkAmountCap,
+  confirmationTokens,
+  futurePaymentDates,
+  linesTotal,
+  paymentsTotal,
+  VERIFY_MESSAGES,
+} from "./safety.js";
+import { todayInIsrael } from "../hebcal/shabbat.js";
 
 /**
  * Green Invoice (Morning) — Israeli invoicing and bookkeeping.
@@ -113,6 +123,13 @@ const createDocumentShape = {
     .boolean()
     .default(true)
     .describe("true = validate via the preview endpoint without issuing anything. Set false only after the user confirmed."),
+  confirmationToken: z
+    .string()
+    .optional()
+    .describe(
+      "Required when dryRun=false: the confirmationToken returned by the dryRun preview of these exact arguments. " +
+        "Single-use, expires after 10 minutes, and is rejected if any argument changed since the preview.",
+    ),
 };
 
 export const greenInvoice: ServiceModule = {
@@ -125,7 +142,7 @@ export const greenInvoice: ServiceModule = {
   },
 
   register(server, config) {
-    const gi = new GreenInvoiceClient(
+    const gi = getGreenInvoiceClient(
       config.greenInvoice.apiId!,
       config.greenInvoice.apiSecret!,
       config.greenInvoice.env,
@@ -168,7 +185,7 @@ export const greenInvoice: ServiceModule = {
       },
       async ({ fromDate, toDate, types, statuses, clientName, number, page, pageSize }) =>
         run(async () => {
-          const r = await gi.post("/documents/search", {
+          const r = await gi.query("/documents/search", {
             page,
             pageSize,
             fromDate,
@@ -224,7 +241,7 @@ export const greenInvoice: ServiceModule = {
       },
       async (args) =>
         run(async () => {
-          const r = await gi.post("/clients/search", args);
+          const r = await gi.query("/clients/search", args);
           return ok({
             environment: env,
             total: r?.total,
@@ -241,29 +258,25 @@ export const greenInvoice: ServiceModule = {
     );
 
     if (!config.greenInvoice.allowWrite) return;
+    const maxTotal = config.greenInvoice.maxTotal;
 
     server.registerTool(
       "gi_create_document",
       {
         title: "Green Invoice: create document",
         description:
-          "Create an invoice, receipt, quote or other document. Defaults to dryRun=true, which validates the " +
-          "payload via the preview endpoint without issuing anything. In production an issued document is legally " +
-          "binding and cannot be deleted, only cancelled with a credit invoice (330) — always show the user the " +
-          "final details and get explicit confirmation before calling with dryRun=false. " +
-          "Business-type rules: עוסק פטור cannot issue 305; use 320 or 400.",
+          "Create an invoice, receipt, quote or other document. Two steps, always: " +
+          "(1) call with dryRun=true (the default) — validates via the preview endpoint, issues nothing, lists possible " +
+          "duplicates, and returns a confirmationToken; (2) show the user the exact details and, only after explicit " +
+          "confirmation, call again with the SAME arguments, dryRun=false and that confirmationToken. Changing any argument " +
+          "invalidates the token. In production an issued document is legally binding and cannot be deleted, only " +
+          "cancelled with a credit invoice (330). If issuing returns 'outcome unknown', do not retry — check " +
+          "gi_search_documents first. Business-type rules: עוסק פטור cannot issue 305; use 320 or 400.",
         inputSchema: createDocumentShape,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
       },
       async (args) =>
         run(async () => {
-          if (TYPES_REQUIRING_PAYMENT.has(args.type) && !args.payment?.length) {
-            throw new Error(`Document type ${args.type} requires a payment array`);
-          }
-          if (args.sendEmail && !args.client.emails?.length) {
-            throw new Error("sendEmail=true requires client.emails");
-          }
-
           const body = {
             type: args.type,
             date: args.date,
@@ -280,21 +293,99 @@ export const greenInvoice: ServiceModule = {
             income: args.income,
             payment: args.payment,
           };
+          const total = linesTotal(args.income);
+          const base = { env, type: args.type, client: args.client.name, total, currency: args.currency };
+          const refuse = (reason: string, action: "preview" | "issue"): never => {
+            audit({ ...base, action, outcome: "refused", reason });
+            throw new Error(reason);
+          };
+          const action = args.dryRun ? "preview" : "issue";
 
+          // ---- local validation (both steps) ----
+          if (TYPES_REQUIRING_PAYMENT.has(args.type) && !args.payment?.length) {
+            refuse(`Document type ${args.type} requires a payment array`, action);
+          }
+          if (args.sendEmail && !args.client.emails?.length) refuse("sendEmail=true requires client.emails", action);
+          const future = futurePaymentDates(args.payment, todayInIsrael());
+          if (TYPES_REQUIRING_PAYMENT.has(args.type) && future.length) {
+            refuse(`Payment dates cannot be in the future for receipt types: ${future.join(", ")}`, action);
+          }
+          const cap = checkAmountCap(args.income, args.payment, maxTotal);
+          if (cap) refuse(cap, action);
+
+          const typeName = DOCUMENT_TYPES[args.type as keyof typeof DOCUMENT_TYPES];
+
+          // ---- step 1: preview ----
           if (args.dryRun) {
-            const preview = await gi.post("/documents/preview", body);
+            const preview = await gi.query("/documents/preview", body);
+
+            let possibleDuplicates: unknown;
+            try {
+              const day = args.date ?? todayInIsrael();
+              const r = await gi.query("/documents/search", {
+                page: 1,
+                pageSize: 10,
+                fromDate: day,
+                toDate: day,
+                type: [args.type],
+                clientName: args.client.name,
+              });
+              possibleDuplicates = (r?.items ?? []).map(summarizeDocument);
+            } catch (e) {
+              possibleDuplicates = `duplicate check failed: ${e instanceof Error ? e.message : String(e)}`;
+            }
+
+            const { token, expiresAt } = confirmationTokens.issue(body);
+            audit({ ...base, action: "preview", outcome: "ok" });
             return ok({
               environment: env,
               dryRun: true,
               valid: true,
+              ...(env === "production" && {
+                warning: "PRODUCTION: issuing creates a legally binding document that cannot be deleted.",
+              }),
+              wouldIssue: {
+                type: args.type,
+                typeName,
+                date: args.date ?? todayInIsrael(),
+                client: { name: args.client.name, id: args.client.id, taxId: args.client.taxId },
+                lines: args.income,
+                linesTotal: total,
+                vatNote: "linesTotal is Σ quantity×price as entered; VAT is applied per line vatType.",
+                payment: args.payment,
+                paymentsTotal: args.payment ? paymentsTotal(args.payment) : undefined,
+                currency: args.currency,
+                sendEmailTo: args.sendEmail ? args.client.emails : undefined,
+              },
+              possibleDuplicates,
               previewPdfBytes: typeof preview?.file === "string" ? Math.floor((preview.file.length * 3) / 4) : undefined,
-              wouldIssue: { type: DOCUMENT_TYPES[args.type as keyof typeof DOCUMENT_TYPES], client: args.client.name, income: args.income },
-              next: "Show the details to the user and call again with dryRun=false after explicit confirmation.",
+              confirmationToken: token,
+              expiresAt,
+              next:
+                "Show wouldIssue (and any possibleDuplicates) to the user. Only after explicit confirmation, call again " +
+                "with the same arguments plus dryRun=false and this confirmationToken.",
             });
           }
 
-          const created = await gi.post("/documents", body);
-          return ok({ environment: env, dryRun: false, created });
+          // ---- step 2: issue ----
+          const v = confirmationTokens.verify(args.confirmationToken, body);
+          if (!v.ok) refuse(VERIFY_MESSAGES[v.reason], "issue");
+          confirmationTokens.consume((v as { id: string }).id);
+
+          try {
+            const created = await gi.create("/documents", body);
+            audit({ ...base, action: "issue", outcome: "ok", documentId: created?.id, documentNumber: created?.number });
+            return ok({ environment: env, dryRun: false, created });
+          } catch (e) {
+            const unknown = e instanceof WriteOutcomeUnknownError;
+            audit({
+              ...base,
+              action: "issue",
+              outcome: unknown ? "unknown" : "error",
+              reason: e instanceof Error ? e.message.slice(0, 300) : String(e),
+            });
+            throw e;
+          }
         }),
     );
   },

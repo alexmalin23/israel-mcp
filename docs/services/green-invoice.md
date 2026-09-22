@@ -11,9 +11,13 @@ Israeli invoicing and bookkeeping. Requires API keys.
 2. For testing, create a **separate sandbox account** (`https://lp.sandbox.d.greeninvoice.co.il/join`) and generate keys there. Production keys return 401 on the sandbox (and vice versa) with the same error as a wrong key.
 3. Set `GREENINVOICE_API_ID`, `GREENINVOICE_API_SECRET`, `GREENINVOICE_ENV`.
 
-## Auth and limits
-- `POST /account/token {id, secret}` → JWT (~30 min). Cached 25 min, refreshed once on 401.
-- Throttled client-side to ~3 req/s.
+## Auth, limits and retries (`client.ts`)
+- `POST /account/token {id, secret}` → JWT (~30 min). Cached 25 min, single-flight (concurrent calls share one token request), refreshed once on 401.
+- Throttled client-side to ~3 req/s. The throttle is a serialized queue, so parallel tool calls are spaced too.
+- One client per (env, keys) per process — the stateless HTTP entrypoint builds a server per request but reuses the token and throttle.
+- **Safe requests** (`GET`, `/documents/search`, `/clients/search`, `/documents/preview`): retried up to 2× on 429/502/503/504 and network errors, exponential backoff (500 ms, 1 s), `Retry-After` honored, capped at 5 s.
+- **Writes** (`POST /documents`): never retried on ambiguous failures. Timeout, network error or any 5xx → `WriteOutcomeUnknownError` ("the document MAY have been issued — check `gi_search_documents` before anything else"). 401 (token refresh) and 429 are rejected before processing, so those are resent once.
+- Non-JSON success bodies (e.g. maintenance HTML) → readable `HttpError` instead of a raw `SyntaxError`.
 
 ## Tools
 
@@ -25,11 +29,22 @@ Israeli invoicing and bookkeeping. Requires API keys.
 | `gi_search_clients` | `POST /clients/search` | `name`, `email`, `taxId`, `active`, paging |
 | `gi_create_document` | `POST /documents/preview` → `POST /documents` | Opt-in, `dryRun` by default |
 
-### `gi_create_document` safety model
+### `gi_create_document` safety model (`safety.ts`)
 1. Registered only when `GREENINVOICE_ALLOW_WRITE=true`.
-2. `dryRun: true` by default → validates through `/documents/preview`, issues nothing.
-3. Tool description and server instructions tell the agent to get explicit user confirmation before `dryRun: false`.
-4. Local validation before any call: types 320/400/405 require `payment`; `sendEmail` requires `client.emails`.
+2. **Step 1 — `dryRun: true` (default):** local validation → `/documents/preview` → same-day search for the same client + type (`possibleDuplicates`) → returns `wouldIssue` (lines, `linesTotal`, payments, recipient emails), a production warning when relevant, and a `confirmationToken`.
+3. **Step 2 — `dryRun: false`:** requires `confirmationToken`. The token is `id.expiry.HMAC(id, expiry, sha256(canonical request body))` with a per-process secret:
+   - any change to the arguments after the preview (amount, client, lines, type, date, …) → refused ("differ from the previewed ones");
+   - single-use: consumed *before* sending, so a retry after an ambiguous failure can't issue twice;
+   - expires after 10 minutes; a server restart invalidates all tokens.
+4. **Local validation (both steps, before any API call):** types 320/400/405 require `payment`; payment dates can't be after today (Israel time) for those types; `sendEmail` requires `client.emails`; Σ lines and Σ payments must be ≤ `GREENINVOICE_MAX_TOTAL` (default 20,000 in the document currency, `0` disables).
+5. **Outcome unknown:** timeout / 5xx on issue → `isError` telling the agent to check `gi_search_documents`; the token is already burned, so the only way forward is a new preview, which will list the document under `possibleDuplicates` if it was created.
+6. **Audit log:** every preview/issue/refusal writes one JSON line to stderr (`[israel-mcp] audit {...}`: env, action, outcome, type, client name, total, currency, document id/number, reason). No keys, emails or tax ids.
+
+| Input | Notes |
+|---|---|
+| `type`, `client`, `income`, `payment`, `date`, `dueDate`, `lang`, `currency`, `description`, `remarks`, `sendEmail` | As before |
+| `dryRun` | default `true` |
+| `confirmationToken` | Required when `dryRun=false`; from the preview of the *same* arguments |
 
 Issued production documents are legally binding and cannot be deleted — only cancelled with a credit invoice (330).
 

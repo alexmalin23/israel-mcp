@@ -24,7 +24,7 @@ export function createServer(config: Config): { server: McpServer; status: Servi
         "Tools for Israeli services. Prefixes: gov_ = data.gov.il open data, boi_ = Bank of Israel exchange rates, " +
         "hebcal_/il_ = Jewish calendar, holidays and Israeli business days, gi_ = Green Invoice invoicing. " +
         "Dates are YYYY-MM-DD. Amounts are in ILS unless a currency is given. " +
-        "Never call gi_create_document with dryRun=false without explicit user confirmation.",
+        "gi_create_document is two-step: dryRun preview → show the user → dryRun=false with the preview's confirmationToken only after explicit user confirmation. If it reports 'outcome unknown', never retry blindly — check gi_search_documents.",
     },
   );
 

@@ -16,7 +16,8 @@ Read README.md first, then docs/services/<service>.md for the service you touch.
 - Tool bodies are wrapped in `run()` and return `ok({...})`; never throw out of a handler.
 - Pure logic lives in its own module with unit tests (e.g. services/hebcal/calendar.ts).
 - stdout is the MCP channel: log to stderr only.
-- Anything that creates money/legal records: env opt-in flag + dryRun default + "needs user confirmation" in the description.
+- Anything that creates money/legal records: env opt-in flag + dryRun default + "needs user confirmation" in the description,
+  plus a preview-bound single-use confirmation token and no blind retries on writes (see services/green-invoice/safety.ts).
 - Keep docs/services/*.md in sync with tool changes in the same commit.
 
 ## Status

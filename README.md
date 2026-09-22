@@ -9,7 +9,7 @@ An MCP server that gives AI agents access to Israeli services through task-level
 | [Hebcal](docs/services/hebcal.md) — holidays, Shabbat, business days | `hebcal_`, `il_` | none | `hebcal_holidays`, `hebcal_shabbat_times`, `hebcal_convert_date`, `il_business_days_between`, `il_add_business_days` |
 | [Green Invoice / Morning](docs/services/green-invoice.md) — invoicing | `gi_` | API key | `gi_business_info`, `gi_search_documents`, `gi_get_document`, `gi_search_clients`, `gi_create_document`* |
 
-\* Write tool, registered only with `GREENINVOICE_ALLOW_WRITE=true`, and defaults to `dryRun`.
+\* Write tool, registered only with `GREENINVOICE_ALLOW_WRITE=true`. Two-step: a `dryRun` preview returns a single-use `confirmationToken` bound to the exact payload; issuing requires it.
 
 Services without credentials are skipped at startup, so the server runs out of the box with the three public services.
 
@@ -77,6 +77,7 @@ All configuration is via environment variables — see [`.env.example`](.env.exa
 | `GREENINVOICE_API_ID` / `GREENINVOICE_API_SECRET` | — | Enables Green Invoice tools |
 | `GREENINVOICE_ENV` | `sandbox` | `sandbox` or `production` (separate tenancies, separate keys) |
 | `GREENINVOICE_ALLOW_WRITE` | `false` | Registers `gi_create_document` |
+| `GREENINVOICE_MAX_TOTAL` | `20000` | Refuse documents whose lines or payments exceed this (document currency; `0` disables) |
 | `HEBCAL_DEFAULT_GEONAMEID` | `281184` (Jerusalem) | Default city for Shabbat times |
 | `HTTP_TIMEOUT_MS` | `15000` | Timeout for all outbound requests |
 | `PORT` | `3000` | HTTP entrypoint port (`start:http` only) |
