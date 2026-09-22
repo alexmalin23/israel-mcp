@@ -1,0 +1,13 @@
+# Roadmap
+
+## Next services
+- **Payment gateways** (Grow/Meshulam, Cardcom, Tranzila, Pelecard): payment links and transaction lookup first; charging saved tokens only behind a write flag + dry run.
+- **Israel Post**: tracking (no official public API — needs scraping or a partner).
+- **Registrar of Companies (רשם החברות)** via data.gov.il: company lookup by ח.פ.
+- **Bank of Israel history**: SDMX series for historical rates and the policy rate.
+
+## Platform
+- Streamable HTTP entrypoint (`src/http.ts`) reusing `createServer()`.
+- Per-user credentials (OAuth / encrypted key vault) for a hosted multi-tenant version.
+- Response caching for public data (BOI once per business day, Hebcal per range).
+- Publish to npm (`npx israel-mcp`) and the MCP registry.
