@@ -56,6 +56,18 @@ claude mcp add israel \
 npm run inspect   # opens MCP Inspector against src/index.ts
 ```
 
+### Streamable HTTP
+
+For remote or multi-client setups, run the stateless Streamable HTTP entrypoint (one server + transport per request, no sessions):
+
+```bash
+npm run build
+PORT=3000 npm run start:http   # MCP at http://127.0.0.1:3000/mcp, health check at GET /health
+claude mcp add --transport http israel http://127.0.0.1:3000/mcp
+```
+
+It binds to `127.0.0.1` with Host-header (DNS-rebinding) checks. The endpoint has **no authentication**. If you set `HOST=0.0.0.0` (e.g. in a container), put it behind your own auth, and don't enable `GREENINVOICE_ALLOW_WRITE` there.
+
 ## Configuration
 
 All configuration is via environment variables — see [`.env.example`](.env.example).
@@ -67,6 +79,8 @@ All configuration is via environment variables — see [`.env.example`](.env.exa
 | `GREENINVOICE_ALLOW_WRITE` | `false` | Registers `gi_create_document` |
 | `HEBCAL_DEFAULT_GEONAMEID` | `281184` (Jerusalem) | Default city for Shabbat times |
 | `HTTP_TIMEOUT_MS` | `15000` | Timeout for all outbound requests |
+| `PORT` | `3000` | HTTP entrypoint port (`start:http` only) |
+| `HOST` | `127.0.0.1` | HTTP entrypoint bind address (`start:http` only). Host-header checks apply only on loopback |
 
 ## Design principles
 
@@ -74,13 +88,14 @@ All configuration is via environment variables — see [`.env.example`](.env.exa
 - **Safe by default.** Anything that creates legally binding records is opt-in, defaults to a dry run, and says in its description that it needs user confirmation.
 - **Errors are results.** Tools return `isError` with a readable message (status + trimmed body) so the model can recover, instead of crashing the call.
 - **Structured + text output.** Every tool returns `structuredContent` and a JSON text block.
-- **Transport-agnostic core.** `createServer()` in `src/server.ts` has no transport; `src/index.ts` wires stdio. A Streamable HTTP entrypoint can reuse it unchanged.
+- **Transport-agnostic core.** `createServer()` in `src/server.ts` has no transport; `src/index.ts` wires stdio and `src/http.ts` wires stateless Streamable HTTP.
 
 ## Project layout
 
 ```
 src/
   index.ts              stdio entrypoint (logs to stderr only)
+  http.ts               Streamable HTTP entrypoint (stateless, POST /mcp, GET /health)
   server.ts             createServer(config): registers enabled services
   config.ts             env → typed Config
   lib/http.ts           fetch wrapper: timeout, JSON, HttpError

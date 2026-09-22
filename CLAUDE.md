@@ -8,6 +8,7 @@ Read README.md first, then docs/services/<service>.md for the service you touch.
 - `npm run typecheck` / `npm run build`
 - `npm test` — node:test via tsx; must pass before every commit
 - `npm run dev` — run the stdio server from source
+- `npm run start:http` — run the built Streamable HTTP server (`PORT`, default 3000)
 
 ## Conventions
 - One folder per service under src/services/, exporting a ServiceModule (see docs/adding-a-service.md).
