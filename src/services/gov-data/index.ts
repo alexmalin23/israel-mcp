@@ -1,34 +1,13 @@
 import { z } from "zod";
 import type { ServiceModule } from "../types.js";
-import { buildUrl, requestJson } from "../../lib/http.js";
 import { ok, run } from "../../lib/result.js";
+import { ckan, datastoreSearch, shapeDatastore } from "./ckan.js";
 
 /**
  * data.gov.il — Israeli government open-data portal (CKAN).
- * Public, no authentication. Docs: https://docs.ckan.org/en/latest/api/
+ * Public, no authentication. HTTP helpers live in ./ckan.ts.
  */
-const BASE = "https://data.gov.il/api/3/action";
-
-interface CkanResponse<T> {
-  success: boolean;
-  result: T;
-  error?: { message?: string };
-}
-
-async function ckan<T>(action: string, params: Record<string, string | number | undefined>, timeoutMs: number): Promise<T> {
-  const res = await requestJson<CkanResponse<T>>(buildUrl(`${BASE}/${action}`, params), { timeoutMs });
-  if (!res.success) throw new Error(`CKAN ${action} failed: ${res.error?.message ?? "unknown error"}`);
-  return res.result;
-}
-
-/** Drop CKAN's internal row id ("_id") from both the field list and the records. */
-export function shapeDatastore(r: { total: number; fields: { id: string; type: string }[]; records: Record<string, unknown>[] }) {
-  return {
-    total: r.total,
-    fields: r.fields.filter((f) => f.id !== "_id").map((f) => ({ name: f.id, type: f.type })),
-    records: r.records.map(({ _id, ...rest }) => rest),
-  };
-}
+export { shapeDatastore } from "./ckan.js";
 
 export const govData: ServiceModule = {
   id: "gov",
@@ -85,7 +64,8 @@ export const govData: ServiceModule = {
         description:
           "Read rows from a data.gov.il resource via the CKAN datastore. Only resources with queryable=true " +
           "(from gov_search_datasets) support this. Supports free-text search and exact-match filters on fields. " +
-          "The response includes the field list, so call once with a small limit to discover the schema.",
+          "The response includes the field list, so call once with a small limit to discover the schema. " +
+          "For Israeli company/partnership lookups use the ica_* tools instead.",
         inputSchema: {
           resourceId: z.string().min(1).describe("Resource UUID from gov_search_datasets"),
           query: z.string().optional().describe("Free-text search across all fields"),
@@ -99,20 +79,7 @@ export const govData: ServiceModule = {
         annotations: { readOnlyHint: true, openWorldHint: true },
       },
       async ({ resourceId, query, filters, limit, offset }) =>
-        run(async () => {
-          const r = await ckan<Parameters<typeof shapeDatastore>[0]>(
-            "datastore_search",
-            {
-              resource_id: resourceId,
-              q: query,
-              filters: filters ? JSON.stringify(filters) : undefined,
-              limit,
-              offset,
-            },
-            t,
-          );
-          return ok(shapeDatastore(r));
-        }),
+        run(async () => ok(shapeDatastore(await datastoreSearch({ resourceId, q: query, filters, limit, offset }, t)))),
     );
   },
 };

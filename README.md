@@ -5,13 +5,14 @@ An MCP server that gives AI agents access to Israeli services through task-level
 | Service | Prefix | Auth | Tools |
 |---|---|---|---|
 | [data.gov.il](docs/services/gov-data.md) — government open data | `gov_` | none | `gov_search_datasets`, `gov_query_resource` |
+| [Registrar of Companies](docs/services/ica.md) — company & partnership lookup (via data.gov.il) | `ica_` | none | `ica_lookup_company`, `ica_search_companies` |
 | [Bank of Israel](docs/services/boi.md) — representative exchange rates | `boi_` | none | `boi_exchange_rates`, `boi_convert` |
 | [Hebcal](docs/services/hebcal.md) — holidays, Shabbat, business days | `hebcal_`, `il_` | none | `hebcal_holidays`, `hebcal_shabbat_times`, `hebcal_convert_date`, `il_business_days_between`, `il_add_business_days` |
 | [Green Invoice / Morning](docs/services/green-invoice.md) — invoicing | `gi_` | API key | `gi_business_info`, `gi_search_documents`, `gi_get_document`, `gi_search_clients`, `gi_create_document`* |
 
 \* Write tool, registered only with `GREENINVOICE_ALLOW_WRITE=true`. Two-step: a `dryRun` preview returns a single-use `confirmationToken` bound to the exact payload; issuing requires it.
 
-Services without credentials are skipped at startup, so the server runs out of the box with the three public services.
+Services without credentials are skipped at startup, so the server runs out of the box with the four public services.
 
 ## Quick start
 
@@ -104,7 +105,8 @@ src/
   services/
     types.ts            ServiceModule interface
     index.ts            service registry
-    gov-data/           data.gov.il (CKAN)
+    gov-data/           data.gov.il (CKAN); ckan.ts is the shared datastore client
+    ica/                Registrar of Companies (normalize.ts = pure logic)
     boi/                Bank of Israel
     hebcal/             Hebcal + pure business-day math (calendar.ts)
     green-invoice/      Green Invoice client + tools

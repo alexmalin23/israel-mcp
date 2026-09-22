@@ -21,7 +21,7 @@ export function createServer(config: Config): { server: McpServer; status: Servi
     { name: SERVER_NAME, version: SERVER_VERSION },
     {
       instructions:
-        "Tools for Israeli services. Prefixes: gov_ = data.gov.il open data, boi_ = Bank of Israel exchange rates, " +
+        "Tools for Israeli services. Prefixes: gov_ = data.gov.il open data, ica_ = Registrar of Companies (company/partnership lookup by ח.פ or name — use these instead of gov_query_resource for companies), boi_ = Bank of Israel exchange rates, " +
         "hebcal_/il_ = Jewish calendar, holidays and Israeli business days, gi_ = Green Invoice invoicing. " +
         "Dates are YYYY-MM-DD. Amounts are in ILS unless a currency is given. " +
         "gi_create_document is two-step: dryRun preview → show the user → dryRun=false with the preview's confirmationToken only after explicit user confirmation. If it reports 'outcome unknown', never retry blindly — check gi_search_documents.",
