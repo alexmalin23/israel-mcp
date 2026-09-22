@@ -3,6 +3,7 @@ import type { ServiceModule } from "../types.js";
 import { buildUrl, requestJson } from "../../lib/http.js";
 import { ok, run } from "../../lib/result.js";
 import { addBusinessDays, addDays, countBusinessDays, parseDate } from "./calendar.js";
+import { pickShabbatTimes, todayInIsrael, upcomingSaturday } from "./shabbat.js";
 
 /**
  * Hebcal — Jewish calendar, Israeli holidays, Shabbat times, Hebrew date conversion.
@@ -101,35 +102,34 @@ export const hebcal: ServiceModule = {
       {
         title: "Shabbat candle-lighting and havdalah times",
         description:
-          "Candle-lighting, havdalah and weekly Torah portion for a city. Defaults to the upcoming Shabbat " +
+          "Candle-lighting, havdalah and weekly Torah portion for a city's Shabbat (not Yom Tov times). " +
+          "Defaults to the upcoming Shabbat (Israel time) " +
           "and the configured default city. Cities are GeoNames IDs (Jerusalem 281184, Tel Aviv 293397, " +
           "Haifa 294801, Be'er Sheva 295530).",
         inputSchema: {
           geonameId: z.number().int().optional().describe("GeoNames city ID"),
-          date: DATE.optional().describe("Any date in the target week; defaults to this week"),
+          date: DATE.optional().describe("Returns the Shabbat on or after this date; defaults to today in Israel"),
         },
         annotations: { readOnlyHint: true, openWorldHint: true },
       },
       async ({ geonameId, date }) =>
         run(async () => {
-          const d = date ? parseDate(date) : undefined;
+          // Always send an explicit date so Hebcal's week and our Saturday anchor can't disagree.
+          const base = date ?? todayInIsrael();
+          const d = parseDate(base);
           const url = buildUrl("https://www.hebcal.com/shabbat", {
             cfg: "json",
             geonameid: geonameId ?? config.hebcal.defaultGeonameId,
             M: "on",
-            gy: d?.getUTCFullYear(),
-            gm: d ? d.getUTCMonth() + 1 : undefined,
-            gd: d?.getUTCDate(),
+            gy: d.getUTCFullYear(),
+            gm: d.getUTCMonth() + 1,
+            gd: d.getUTCDate(),
           });
           const res = await requestJson<{ location?: { title?: string }; items?: HebcalItem[] }>(url, { timeoutMs: t });
-          const items = res.items ?? [];
-          const pick = (cat: string) => items.find((i) => i.category === cat);
           return ok({
             attribution: ATTRIBUTION,
             location: res.location?.title,
-            candleLighting: pick("candles")?.date ?? null,
-            havdalah: pick("havdalah")?.date ?? null,
-            parasha: pick("parashat") ? { title: pick("parashat")!.title, hebrew: pick("parashat")!.hebrew } : null,
+            ...pickShabbatTimes(res.items ?? [], upcomingSaturday(base)),
           });
         }),
     );

@@ -11,7 +11,12 @@ Public, no authentication. Data is **CC BY 4.0**; every response carries an `att
 Holidays in `[start, end]`. `includeMinor` adds minor holidays, fasts and Rosh Chodesh. Each item has `isRestDay`.
 
 ### `hebcal_shabbat_times`
-Candle lighting, havdalah and parasha. `geonameId` (default from `HEBCAL_DEFAULT_GEONAMEID`), optional `date` for a specific week.
+Candle lighting, havdalah and parasha for the Shabbat on or after `date` (default: today in Israel). `geonameId` defaults to `HEBCAL_DEFAULT_GEONAMEID`.
+
+Returns `shabbatDate`, `candleLighting`, `havdalah`, `parasha` (null on a Yom Tov Shabbat). Times are ISO datetimes with the
+Israel offset. In chag weeks Hebcal returns several `candles`/`havdalah` items; selection is anchored on the Saturday
+(Friday's candles, else the latest earlier that week; havdalah on Saturday, or Sunday when Yom Tov follows Shabbat).
+Pure logic in `src/services/hebcal/shabbat.ts`, covered by `test/shabbat.test.ts`.
 
 | City | GeoNames ID |
 |---|---|
