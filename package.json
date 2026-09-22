@@ -1,7 +1,7 @@
 {
   "name": "israel-mcp",
   "version": "0.1.0",
-  "description": "MCP server for Israeli services: data.gov.il, Bank of Israel, Hebcal (Jewish calendar / business days), Green Invoice (Morning)",
+  "description": "MCP server for Israeli services: data.gov.il, Registrar of Companies, Bank of Israel, Hebcal (Jewish calendar / business days), Green Invoice (Morning)",
   "type": "module",
   "bin": {
     "israel-mcp": "dist/index.js"

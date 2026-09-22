@@ -6,7 +6,6 @@
 - **Bank of Israel history**: SDMX series for historical rates and the policy rate.
 
 ## Platform
-- Streamable HTTP entrypoint (`src/http.ts`) reusing `createServer()`.
 - Per-user credentials (OAuth / encrypted key vault) for a hosted multi-tenant version.
 - Response caching for public data (BOI once per business day, Hebcal per range).
 - Publish to npm (`npx israel-mcp`) and the MCP registry.
