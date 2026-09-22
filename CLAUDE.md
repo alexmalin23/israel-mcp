@@ -20,5 +20,5 @@ Read README.md first, then docs/services/<service>.md for the service you touch.
 - Keep docs/services/*.md in sync with tool changes in the same commit.
 
 ## Status
-v0.1: unit + protocol tests pass. Verified live: data.gov.il, Bank of Israel, all Hebcal tools (holidays, Shabbat times, date conversion, business days).
+v0.1: unit + protocol tests pass. Verified live: data.gov.il (incl. the ICA dataset shapes), Bank of Israel, all Hebcal tools (holidays, Shabbat times, date conversion, business days).
 Green Invoice has never been called live — verify with the curl snippets in docs/services/green-invoice.md before trusting its response shapes.

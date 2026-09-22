@@ -18,6 +18,8 @@ async function listTools(env: NodeJS.ProcessEnv) {
 test("public services register without credentials; Green Invoice is disabled", async () => {
   const { names, status } = await listTools({});
   assert.ok(names.includes("gov_search_datasets"));
+  assert.ok(names.includes("ica_lookup_company"));
+  assert.ok(names.includes("ica_search_companies"));
   assert.ok(names.includes("boi_convert"));
   assert.ok(names.includes("il_add_business_days"));
   assert.ok(!names.some((n) => n.startsWith("gi_")));
